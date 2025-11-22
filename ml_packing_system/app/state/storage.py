@@ -199,3 +199,98 @@ class LayoutStorage:
         except Exception as e:
             print(f"Error exporting submission: {e}")
             return False
+
+    def import_csv(self, file_path: str) -> Optional[PuzzleManager]:
+        """
+        Import puzzle state from a submission CSV file.
+        
+        Args:
+            file_path: Path to the CSV file
+            
+        Returns:
+            PuzzleManager instance populated from CSV, or None if failed
+        """
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                print(f"CSV file not found: {file_path}")
+                return None
+                
+            print(f"Importing baseline from {file_path}...")
+            
+            # Create new manager
+            manager = PuzzleManager()
+            
+            # Temporary storage for trees by puzzle n
+            # Map n -> list of (index, x, y, deg)
+            puzzle_trees = {}
+            
+            with open(path, 'r') as f:
+                header = f.readline() # Skip header
+                
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                        
+                    parts = line.split(',')
+                    if len(parts) != 4:
+                        continue
+                        
+                    # Parse ID: NNN_I
+                    id_parts = parts[0].split('_')
+                    if len(id_parts) != 2:
+                        continue
+                        
+                    n = int(id_parts[0])
+                    idx = int(id_parts[1])
+                    
+                    # Parse values (remove 's' prefix if present)
+                    def parse_val(s):
+                        return float(s.replace('s', ''))
+                    
+                    x = parse_val(parts[1])
+                    y = parse_val(parts[2])
+                    deg = parse_val(parts[3])
+                    
+                    if n not in puzzle_trees:
+                        puzzle_trees[n] = []
+                    
+                    puzzle_trees[n].append((idx, x, y, deg))
+            
+            # Create PuzzleState objects
+            from .puzzle import PuzzleState
+            from ..geometry import ChristmasTree
+            
+            count = 0
+            for n, trees_data in puzzle_trees.items():
+                # Sort by index to ensure correct order
+                trees_data.sort(key=lambda x: x[0])
+                
+                # Create ChristmasTree objects
+                trees = []
+                for _, x, y, deg in trees_data:
+                    trees.append(ChristmasTree(x, y, deg))
+                
+                # Create state
+                state = PuzzleState(
+                    n=n,
+                    trees=trees,
+                    score=0.0, # Will update metrics
+                    side_length=0.0
+                )
+                state.update_metrics()
+                
+                manager.add_puzzle(state)
+                count += 1
+            
+            print(f"Successfully imported {count} puzzles from CSV")
+            print(f"Baseline Total Score: {manager.total_score:.2f}")
+            
+            return manager
+            
+        except Exception as e:
+            print(f"Error importing CSV: {e}")
+            import traceback
+            traceback.print_exc()
+            return None

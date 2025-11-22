@@ -4,6 +4,7 @@ import sys
 import argparse
 import threading
 import uvicorn
+import random
 from app.main import get_app
 
 
@@ -32,9 +33,9 @@ def main():
     parser.add_argument(
         '--device',
         type=str,
-        default='cpu',
+        default='mps',
         choices=['cpu', 'cuda', 'mps'],
-        help='Device for ML computation (default: cpu)'
+        help='Device for ML computation (default: mps)'
     )
     parser.add_argument(
         'mode',
@@ -42,6 +43,30 @@ def main():
         choices=['standard', 'backinpacking', 'backpacking'],
         default='backinpacking',
         help='Operation mode (standard or backinpacking)'
+    )
+    
+    parser.add_argument(
+        '--skip-cycle-1',
+        action='store_true',
+        help='Skip the first cycle (1->200) and start directly with reverse optimization'
+    )
+    parser.add_argument(
+        '--baseline',
+        type=str,
+        help='Path to baseline CSV file to load (e.g., ml_packing_system/data/test.csv)',
+        default='ml_packing_system/data/test.csv'
+    )
+    parser.add_argument(
+        '--seed',
+        type=int,
+        help='Random seed for initialization',
+        default=None
+    )
+    parser.add_argument(
+        '--workers',
+        type=int,
+        help='Number of optimization workers',
+        default=8
     )
     
     args = parser.parse_args()
@@ -65,6 +90,17 @@ def main():
     app.use_ml = not args.no_ml
     app.device = args.device
     app.backpacking_mode = args.mode in ['backinpacking', 'backpacking']
+    app.skip_cycle_1 = args.skip_cycle_1
+    app.baseline_file = args.baseline
+    app.num_workers = args.workers
+    
+    if args.seed is not None:
+        random.seed(args.seed)
+        try:
+            import torch
+            torch.manual_seed(args.seed)
+        except ImportError:
+            pass
     
     # Run initialization and optimization in background thread
     def background_init():
@@ -89,7 +125,8 @@ def main():
             "app.api.main:app",
             host=args.host,
             port=args.port,
-            log_level="info"
+            log_level="warning",
+            access_log=False
         )
     except KeyboardInterrupt:
         print("\n\nShutting down...")

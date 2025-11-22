@@ -2,6 +2,7 @@
 
 import json
 import time
+import threading
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
 from ..geometry import ChristmasTree, calculate_bounding_square, calculate_score
@@ -70,55 +71,70 @@ class PuzzleManager:
         self.total_score: float = 0.0
         self.creation_time: float = time.time()
         self.last_save_time: float = time.time()
+        self._lock = threading.RLock()
         
     def add_puzzle(self, puzzle: PuzzleState):
         """Add or update a puzzle state."""
-        self.puzzles[puzzle.n] = puzzle
-        self._update_total_score()
+        with self._lock:
+            # Only update if new puzzle is better or same (to update stats)
+            # Actually, we should probably only update if better or if it's the first time
+            # But for now, let's assume the caller knows what they are doing, 
+            # OR we can enforce strict improvement here.
+            
+            current = self.puzzles.get(puzzle.n)
+            if current is None or puzzle.score <= current.score:
+                self.puzzles[puzzle.n] = puzzle
+                self._update_total_score()
     
     def get_puzzle(self, n: int) -> Optional[PuzzleState]:
         """Get puzzle state for n trees."""
-        return self.puzzles.get(n)
+        with self._lock:
+            puzzle = self.puzzles.get(n)
+            return puzzle.copy() if puzzle else None
     
     def _update_total_score(self):
         """Recalculate total score across all puzzles."""
+        # Assumes lock is held
         self.total_score = sum(p.score for p in self.puzzles.values())
     
     def get_all_puzzles(self) -> List[PuzzleState]:
         """Get all puzzle states sorted by n."""
-        return [self.puzzles[n] for n in sorted(self.puzzles.keys())]
+        with self._lock:
+            return [self.puzzles[n].copy() for n in sorted(self.puzzles.keys())]
     
     def get_summary(self) -> dict:
         """Get summary statistics."""
-        if not self.puzzles:
+        with self._lock:
+            if not self.puzzles:
+                return {
+                    'total_puzzles': 0,
+                    'total_score': 0.0,
+                    'avg_score': 0.0,
+                    'total_iterations': 0,
+                    'uptime_seconds': time.time() - self.creation_time
+                }
+            
+            total_iterations = sum(p.iterations for p in self.puzzles.values())
+            avg_score = self.total_score / len(self.puzzles)
+            
             return {
-                'total_puzzles': 0,
-                'total_score': 0.0,
-                'avg_score': 0.0,
-                'total_iterations': 0,
-                'uptime_seconds': time.time() - self.creation_time
+                'total_puzzles': len(self.puzzles),
+                'total_score': self.total_score,
+                'avg_score': avg_score,
+                'total_iterations': total_iterations,
+                'uptime_seconds': time.time() - self.creation_time,
+                'last_save_seconds_ago': time.time() - self.last_save_time
             }
-        
-        total_iterations = sum(p.iterations for p in self.puzzles.values())
-        avg_score = self.total_score / len(self.puzzles)
-        
-        return {
-            'total_puzzles': len(self.puzzles),
-            'total_score': self.total_score,
-            'avg_score': avg_score,
-            'total_iterations': total_iterations,
-            'uptime_seconds': time.time() - self.creation_time,
-            'last_save_seconds_ago': time.time() - self.last_save_time
-        }
     
     def to_dict(self) -> dict:
         """Serialize all puzzles."""
-        return {
-            'puzzles': {n: p.to_dict() for n, p in self.puzzles.items()},
-            'total_score': self.total_score,
-            'creation_time': self.creation_time,
-            'last_save_time': self.last_save_time
-        }
+        with self._lock:
+            return {
+                'puzzles': {n: p.to_dict() for n, p in self.puzzles.items()},
+                'total_score': self.total_score,
+                'creation_time': self.creation_time,
+                'last_save_time': self.last_save_time
+            }
     
     @classmethod
     def from_dict(cls, data: dict) -> 'PuzzleManager':

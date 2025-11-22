@@ -7,6 +7,10 @@ let isProcessing = false;
 
 // Canvas cache for performance
 const canvasCache = new Map();
+// Throttling for visual updates
+const lastDrawTime = new Map();
+const isFetching = new Map(); // Track active fetches
+const DRAW_THROTTLE_MS = 1000; // Only redraw every 1 second max per puzzle
 
 // Connect to WebSocket
 function connectWebSocket() {
@@ -184,8 +188,15 @@ function updatePuzzleCard(n, data) {
         showImprovement(card, oldScore - newScore);
     }
     
-    // Request full data and draw
-    requestPuzzleData(n);
+    // Request full data and draw (throttled)
+    const now = Date.now();
+    const lastDraw = lastDrawTime.get(n) || 0;
+    
+    // Always draw if it's an improvement (newScore < oldScore) or if enough time passed
+    if (newScore < oldScore || now - lastDraw > DRAW_THROTTLE_MS) {
+        lastDrawTime.set(n, now);
+        requestPuzzleData(n);
+    }
 }
 
 // Show improvement badge
@@ -205,7 +216,10 @@ function showImprovement(card, improvement) {
 
 // Request puzzle data from API
 async function requestPuzzleData(n) {
+    if (isFetching.get(n)) return; // Skip if already fetching
+    
     try {
+        isFetching.set(n, true);
         const response = await fetch(`/api/puzzle/${n}`);
         const data = await response.json();
         
@@ -214,6 +228,8 @@ async function requestPuzzleData(n) {
         }
     } catch (error) {
         console.error(`Error fetching puzzle ${n}:`, error);
+    } finally {
+        isFetching.set(n, false);
     }
 }
 
@@ -503,7 +519,7 @@ setTimeout(fetchVerificationSummary, 2000);
 setInterval(() => {
     const randomN = Math.floor(Math.random() * (activeRange.end - activeRange.start + 1)) + activeRange.start;
     requestPuzzleData(randomN);
-}, 1000);
+}, 50); // 20 times per second (very fast)
 
 // Refresh verification summary every 30 seconds
 setInterval(fetchVerificationSummary, 30000);

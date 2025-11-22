@@ -7,7 +7,15 @@ import numpy as np
 from typing import Optional, Callable
 from ..state import PuzzleState, PuzzleManager
 from ..ml import PPOAgent, PackingEnv
-from .heuristics import local_search, simulated_annealing, squeeze_bounds, jitter_positions
+from .heuristics import (
+    local_search, 
+    simulated_annealing, 
+    squeeze_bounds, 
+    jitter_positions,
+    iterative_squeeze,
+    boundary_compression,
+    scramble_positions
+)
 from .backpacking import run_backpacking, BackPackingResult
 from .initializer import initialize_puzzle
 
@@ -69,8 +77,16 @@ class HybridOptimizer:
                 'ml' if self.use_ml else 'heuristic'
             )
             
-            if verbose and iteration % 20 == 0:
-                print(f"      Iteration {iteration}/{max_iterations}: score={best_score:.6f}, improvements={improvements_found}")
+            if verbose:
+                current_time = time.strftime('%H:%M:%S')
+                # ASCII Progress Bar
+                progress = (iteration + 1) / max_iterations
+                bar_length = 30
+                filled_length = int(bar_length * progress)
+                bar = '█' * filled_length + '░' * (bar_length - filled_length)
+                percent = progress * 100
+                
+                print(f"      [{current_time}] {bar} {percent:3.0f}% | Iter {iteration+1}/{max_iterations} | Score: {best_score:.6f} | Improv: {improvements_found} | {method.upper()}")
             
             if method == 'ml' and self.agent is not None:
                 # RL-based optimization
@@ -133,7 +149,10 @@ class HybridOptimizer:
     def _optimize_with_heuristics(self, state: PuzzleState) -> PuzzleState:
         """Optimize using heuristics."""
         # Choose random heuristic (include backpacking trigger at low probability)
-        method = random.choice(['local_search', 'simulated_annealing', 'squeeze', 'jitter', 'backpacking'])
+        method = random.choice([
+            'local_search', 'simulated_annealing', 'squeeze', 'jitter', 
+            'iterative_squeeze', 'boundary_compression', 'scramble', 'backpacking'
+        ])
         
         if method == 'local_search':
             return local_search(state, iterations=20, step_size=0.03)
@@ -141,8 +160,17 @@ class HybridOptimizer:
             return simulated_annealing(state, iterations=50, initial_temp=0.5)
         elif method == 'squeeze':
             return squeeze_bounds(state, factor=0.99)
+        elif method == 'iterative_squeeze':
+            return iterative_squeeze(state, step_size=0.02, iterations=2)
+        elif method == 'boundary_compression':
+            return boundary_compression(state, step_size=0.05)
         elif method == 'jitter':
             return jitter_positions(state, magnitude=0.01)
+        elif method == 'scramble':
+            # Only scramble with low probability as it's destructive
+            if random.random() < 0.05:
+                return scramble_positions(state)
+            return state
         elif method == 'backpacking':
             # Run full backward iteration across currently known puzzles if manager context exists
             return state  # Placeholder: BackPacking operates at manager level, not single state
@@ -226,7 +254,10 @@ class AdaptiveOptimizer(HybridOptimizer):
             'local_search': 0.5,
             'simulated_annealing': 0.5,
             'squeeze': 0.5,
-            'jitter': 0.5
+            'iterative_squeeze': 0.5,
+            'boundary_compression': 0.5,
+            'jitter': 0.5,
+            'scramble': 0.1
         }
         self.method_counts = {key: 0 for key in self.success_rates}
         self.method_successes = {key: 0 for key in self.success_rates}
@@ -251,8 +282,14 @@ class AdaptiveOptimizer(HybridOptimizer):
             result = simulated_annealing(state, iterations=50)
         elif method == 'squeeze':
             result = squeeze_bounds(state)
+        elif method == 'iterative_squeeze':
+            result = iterative_squeeze(state)
+        elif method == 'boundary_compression':
+            result = boundary_compression(state)
         elif method == 'jitter':
             result = jitter_positions(state)
+        elif method == 'scramble':
+            result = scramble_positions(state)
         else:
             result = state
         

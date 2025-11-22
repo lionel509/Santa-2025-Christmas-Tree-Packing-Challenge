@@ -18,7 +18,8 @@ The algorithm expects each PuzzleState to have correctly updated
 
 from typing import Dict, List, Tuple
 from ..state import PuzzleState
-from ..geometry import ChristmasTree, calculate_score
+from ..geometry import ChristmasTree, calculate_score, calculate_bounding_square
+from ..geometry.bounds import get_bounding_box
 
 
 class BackPackingResult:
@@ -43,6 +44,55 @@ class BackPackingResult:
 def _compute_side_length(puzzle: PuzzleState) -> float:
     """Return current puzzle side length (already stored)."""
     return float(puzzle.side_length)
+
+
+def smart_truncate(trees: List[ChristmasTree], target_n: int) -> List[ChristmasTree]:
+    """
+    Truncate tree list to target_n by iteratively removing boundary trees
+    that minimize the bounding box.
+    """
+    current_trees = [t.copy() for t in trees]
+    
+    while len(current_trees) > target_n:
+        # Get current bounds
+        minx, miny, maxx, maxy = get_bounding_box(current_trees)
+        
+        # Find trees on the boundary
+        candidates = []
+        margin = 1e-4
+        for i, t in enumerate(current_trees):
+            t_minx, t_miny, t_maxx, t_maxy = t.get_bounds()
+            if (abs(t_minx - minx) < margin or abs(t_maxx - maxx) < margin or
+                abs(t_miny - miny) < margin or abs(t_maxy - maxy) < margin):
+                candidates.append(i)
+        
+        if not candidates:
+            # Fallback: remove last
+            current_trees.pop()
+            continue
+            
+        # Try removing each candidate
+        best_idx = -1
+        best_new_side = float('inf')
+        
+        for idx in candidates:
+            # Create temp list without this tree
+            # Optimization: don't copy full list, just pass iterator to calc bounds?
+            # calculate_bounding_square takes list.
+            temp_trees = current_trees[:idx] + current_trees[idx+1:]
+            new_side = calculate_bounding_square(temp_trees)
+            
+            if new_side < best_new_side:
+                best_new_side = new_side
+                best_idx = idx
+        
+        # Remove the best candidate
+        if best_idx != -1:
+            current_trees.pop(best_idx)
+        else:
+            current_trees.pop()
+            
+    return current_trees
 
 
 def run_backpacking(puzzles: Dict[int, PuzzleState]) -> BackPackingResult:
@@ -76,7 +126,9 @@ def run_backpacking(puzzles: Dict[int, PuzzleState]) -> BackPackingResult:
         else:
             # Adapt from best by truncating trees if possible
             if best_puzzle is not None and len(best_puzzle.trees) >= n:
-                adapted_trees = [t.copy() for t in best_puzzle.trees[:n]]
+                # Use smart truncation instead of simple slicing
+                adapted_trees = smart_truncate(best_puzzle.trees, n)
+                
                 adapted_state = PuzzleState(n=n, trees=adapted_trees, score=0.0, side_length=0.0)
                 adapted_state.update_metrics()
 
