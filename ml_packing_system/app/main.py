@@ -108,23 +108,38 @@ class Application:
         self.running = True
         
         def optimization_loop():
-            """Main optimization loop."""
-            print("Starting optimization loop...")
+            """Main optimization loop - runs continuously 24/7."""
+            print("Starting CONTINUOUS optimization loop (24/7)...")
+            print("Will optimize all 200 puzzles in a loop")
+            print("Early stopping: 50 consecutive trials without improvement per puzzle")
+            print("Using maximum CPU resources available")
+            print()
             
             cycle = 0
+            # Track consecutive no-improvement trials per puzzle
+            no_improvement_count = {n: 0 for n in range(1, 201)}
+            max_trials_without_improvement = 50
+            
             while self.running:
                 cycle += 1
-                print(f"\n{'='*50}")
-                print(f"Optimization Cycle {cycle}")
-                print(f"{'='*50}")
+                cycle_start_time = time.time()
+                cycle_improvements = 0
                 
-                # Iterate through puzzles
+                print(f"\n{'='*60}")
+                print(f"Optimization Cycle {cycle} - {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"{'='*60}")
+                
+                # Iterate through all 200 puzzles continuously
                 for n in range(1, 201):
                     if not self.running:
                         break
                     
                     puzzle = self.manager.get_puzzle(n)
                     if puzzle is None:
+                        continue
+                    
+                    # Skip if we've tried too many times without improvement
+                    if no_improvement_count[n] >= max_trials_without_improvement:
                         continue
                     
                     old_score = puzzle.score
@@ -142,19 +157,29 @@ class Application:
                             except:
                                 pass
                     
+                    # Run optimization with more aggressive iterations
                     optimized = self.optimizer.optimize_puzzle(
                         puzzle,
-                        max_iterations=50,
+                        max_iterations=100,  # Increased for better optimization
                         callback=callback
                     )
                     
                     # Update manager
                     self.manager.add_puzzle(optimized)
                     
-                    # Log significant improvements
+                    # Check for improvement
                     improvement = old_score - optimized.score
-                    if improvement > 0.001:
-                        print(f"  Puzzle {n:3d}: {old_score:.6f} → {optimized.score:.6f} (↓{improvement:.6f})")
+                    
+                    if improvement > 1e-6:  # Any improvement (even tiny)
+                        no_improvement_count[n] = 0  # Reset counter
+                        cycle_improvements += 1
+                        print(f"  ✓ Puzzle {n:3d}: {old_score:.6f} → {optimized.score:.6f} (↓{improvement:.6f}) [Trials reset]")
+                    else:
+                        no_improvement_count[n] += 1
+                        if no_improvement_count[n] >= max_trials_without_improvement:
+                            print(f"  ⏸ Puzzle {n:3d}: Paused after {max_trials_without_improvement} trials without improvement (score: {optimized.score:.6f})")
+                        elif no_improvement_count[n] % 10 == 0:
+                            print(f"  → Puzzle {n:3d}: No improvement ({no_improvement_count[n]}/{max_trials_without_improvement} trials)")
                     
                     # Broadcast state update
                     try:
@@ -170,11 +195,26 @@ class Application:
                         pass
                 
                 # Cycle summary
+                cycle_time = time.time() - cycle_start_time
                 summary = self.manager.get_summary()
-                print(f"\nCycle {cycle} Summary:")
+                active_puzzles = sum(1 for count in no_improvement_count.values() if count < max_trials_without_improvement)
+                paused_puzzles = 200 - active_puzzles
+                
+                print(f"\n{'='*60}")
+                print(f"Cycle {cycle} Summary:")
                 print(f"  Total Score: {summary['total_score']:.2f}")
                 print(f"  Avg Score: {summary['avg_score']:.6f}")
+                print(f"  Improvements This Cycle: {cycle_improvements}")
+                print(f"  Active Puzzles: {active_puzzles}/200")
+                print(f"  Paused Puzzles: {paused_puzzles}/200")
+                print(f"  Cycle Time: {cycle_time:.1f}s")
                 print(f"  Total Iterations: {summary['total_iterations']:,}")
+                print(f"{'='*60}")
+                
+                # If all puzzles are paused, reset counters to try again
+                if active_puzzles == 0:
+                    print("\n🔄 All puzzles paused - resetting counters for new optimization round!")
+                    no_improvement_count = {n: 0 for n in range(1, 201)}
                 
                 # Broadcast progress
                 try:
@@ -182,9 +222,9 @@ class Application:
                 except:
                     pass
                 
-                # Auto-save
-                if cycle % 5 == 0:
-                    print("Auto-saving...")
+                # Auto-save every cycle (more frequent for 24/7 operation)
+                if cycle % 3 == 0:
+                    print(f"\n💾 Auto-saving state...")
                     self.storage.save(self.manager)
         
         # Start thread
@@ -242,10 +282,11 @@ class Application:
 app_instance: Optional[Application] = None
 
 
-def get_app() -> Application:
+def get_app(initialize: bool = True) -> Application:
     """Get or create application instance."""
     global app_instance
     if app_instance is None:
         app_instance = Application()
-        app_instance.initialize()
+        if initialize:
+            app_instance.initialize()
     return app_instance

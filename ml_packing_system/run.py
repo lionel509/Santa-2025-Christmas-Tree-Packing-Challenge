@@ -2,6 +2,7 @@
 
 import sys
 import argparse
+import threading
 import uvicorn
 from app.main import get_app
 
@@ -43,25 +44,39 @@ def main():
     print("ML-Powered Autonomous Optimization System")
     print("="*60)
     print()
-    
-    # Initialize application
-    app = get_app()
-    app.use_ml = not args.no_ml
-    app.device = args.device
-    app.initialize()
-    
-    # Start optimization
-    app.start_optimization()
-    
+    print(f"🚀 Web server starting on http://{args.host}:{args.port}")
+    print(f"📊 Dashboard available at: http://{args.host}:{args.port}/")
     print()
-    print(f"Starting web server on http://{args.host}:{args.port}")
-    print(f"Open http://{args.host}:{args.port}/ in your browser to view the interface")
+    print("✨ Dashboard is accessible immediately!")
+    print("⚙️  Initialization and optimization running in background...")
     print()
     print("Press Ctrl+C to stop")
     print()
     
+    # Get application instance (but don't initialize yet)
+    app = get_app(initialize=False)
+    app.use_ml = not args.no_ml
+    app.device = args.device
+    
+    # Run initialization and optimization in background thread
+    def background_init():
+        try:
+            print("[Background] Starting initialization...")
+            app.initialize()
+            print("[Background] ✅ Initialization complete!")
+            print("[Background] Starting optimization...")
+            app.start_optimization()
+            print("[Background] ✅ Optimization loop running!")
+        except Exception as e:
+            print(f"[Background] ❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    init_thread = threading.Thread(target=background_init, daemon=True)
+    init_thread.start()
+    
     try:
-        # Run FastAPI server
+        # Run FastAPI server immediately (non-blocking)
         uvicorn.run(
             "app.api.main:app",
             host=args.host,
