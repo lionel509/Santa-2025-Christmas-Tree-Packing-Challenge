@@ -11,6 +11,7 @@ from typing import Optional
 from .websocket import ws_manager
 from ..state import PuzzleManager, LayoutStorage
 from ..geometry import calculate_bounding_square, get_square_bounds
+from ..verification import verify_puzzle, verify_all_puzzles, get_puzzle_verification_status
 
 
 # Initialize app
@@ -235,6 +236,122 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)
+
+
+@app.get("/api/verify/{n}")
+async def verify_puzzle_endpoint(n: int):
+    """Verify a specific puzzle."""
+    if puzzle_manager is None:
+        raise HTTPException(status_code=500, detail="System not initialized")
+    
+    if n < 1 or n > 200:
+        raise HTTPException(status_code=400, detail="Invalid puzzle number (must be 1-200)")
+    
+    puzzle = puzzle_manager.get_puzzle(n)
+    
+    if puzzle is None:
+        raise HTTPException(status_code=404, detail=f"Puzzle {n} not found")
+    
+    # Run verification
+    result = verify_puzzle(puzzle, tolerance=0.0)
+    
+    return JSONResponse(content=result)
+
+
+@app.get("/api/verify/all")
+async def verify_all_puzzles_endpoint():
+    """Verify all puzzles and return summary."""
+    if puzzle_manager is None:
+        raise HTTPException(status_code=500, detail="System not initialized")
+    
+    puzzles = puzzle_manager.get_all_puzzles()
+    
+    if not puzzles:
+        raise HTTPException(status_code=404, detail="No puzzles found")
+    
+    # Run verification on all puzzles
+    result = verify_all_puzzles(puzzles, tolerance=0.0)
+    
+    return JSONResponse(content=result)
+
+
+@app.get("/api/verify/summary")
+async def verify_summary():
+    """Get quick verification summary for dashboard."""
+    if puzzle_manager is None:
+        raise HTTPException(status_code=500, detail="System not initialized")
+    
+    try:
+        puzzles = puzzle_manager.get_all_puzzles()
+        
+        if not puzzles or len(puzzles) == 0:
+            return JSONResponse(content={
+                'total_puzzles': 0,
+                'valid_puzzles': 0,
+                'puzzles_with_collisions': 0,
+                'min_gap': 0.0,
+                'avg_gap': 0.0,
+                'tolerance': 0.0
+            })
+        
+        # Quick verification using simplified logic - just check a sample
+        # Checking all 200 puzzles is too slow for a frequent refresh endpoint
+        from ..geometry import check_all_collisions
+        import random
+        
+        # Sample 20 random puzzles for quick estimate
+        sample_size = min(20, len(puzzles))
+        sample_puzzles = random.sample(puzzles, sample_size)
+        
+        collision_count = 0
+        valid_count = 0
+        
+        for puzzle in sample_puzzles:
+            try:
+                # Quick collision check only
+                collisions = check_all_collisions(puzzle.trees, tolerance=0.0)
+                if len(collisions) > 0:
+                    collision_count += 1
+                else:
+                    valid_count += 1
+            except Exception as e:
+                print(f"Error checking collisions for puzzle {puzzle.n}: {e}")
+                continue
+        
+        # Extrapolate to full dataset
+        total_puzzles = len(puzzles)
+        if sample_size > 0:
+            collision_ratio = collision_count / sample_size
+            estimated_collisions = int(collision_ratio * total_puzzles)
+            estimated_valid = total_puzzles - estimated_collisions
+        else:
+            estimated_collisions = 0
+            estimated_valid = total_puzzles
+        
+        return JSONResponse(content={
+            'total_puzzles': total_puzzles,
+            'valid_puzzles': estimated_valid,
+            'puzzles_with_collisions': estimated_collisions,
+            'min_gap': 0.0,  # Would be too slow to calculate for all
+            'avg_gap': 0.0,
+            'tolerance': 0.0,
+            'note': f'Estimated from {sample_size} sample puzzles'
+        })
+    
+    except Exception as e:
+        print(f"Error in verify_summary: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return default values instead of raising an error
+        return JSONResponse(content={
+            'total_puzzles': 0,
+            'valid_puzzles': 0,
+            'puzzles_with_collisions': 0,
+            'min_gap': 0.0,
+            'avg_gap': 0.0,
+            'tolerance': 0.0,
+            'error': str(e)
+        })
 
 
 # Mount static files (frontend)

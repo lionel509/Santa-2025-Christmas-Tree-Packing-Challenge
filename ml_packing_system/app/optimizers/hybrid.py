@@ -40,7 +40,8 @@ class HybridOptimizer:
         self,
         state: PuzzleState,
         max_iterations: int = 100,
-        callback: Optional[Callable] = None
+        callback: Optional[Callable] = None,
+        verbose: bool = False
     ) -> PuzzleState:
         """
         Optimize a single puzzle.
@@ -49,6 +50,7 @@ class HybridOptimizer:
             state: Initial puzzle state
             max_iterations: Maximum optimization iterations
             callback: Optional callback function(iteration, state)
+            verbose: Enable detailed progress logging
         
         Returns:
             Optimized puzzle state
@@ -56,6 +58,9 @@ class HybridOptimizer:
         current = state.copy()
         best = current.copy()
         best_score = current.score
+        improvements_found = 0
+        ml_attempts = 0
+        heuristic_attempts = 0
         
         for iteration in range(max_iterations):
             # Choose optimization method
@@ -63,18 +68,29 @@ class HybridOptimizer:
                 'ml' if self.use_ml else 'heuristic'
             )
             
+            if verbose and iteration % 20 == 0:
+                print(f"      Iteration {iteration}/{max_iterations}: score={best_score:.6f}, improvements={improvements_found}")
+            
             if method == 'ml' and self.agent is not None:
                 # RL-based optimization
+                ml_attempts += 1
                 current = self._optimize_with_ml(current, steps=10)
             else:
                 # Heuristic-based optimization
+                heuristic_attempts += 1
                 current = self._optimize_with_heuristics(current)
             
             # Update best
             if current.score < best_score:
+                old_best = best_score
                 best = current.copy()
                 best_score = current.score
                 best.last_improvement = time.time()
+                improvements_found += 1
+                
+                if verbose:
+                    improvement = old_best - best_score
+                    print(f"      ⭐ Iteration {iteration}: IMPROVEMENT {old_best:.6f} → {best_score:.6f} (↓{improvement:.6f})")
             
             best.iterations += 1
             self.iteration_count += 1
@@ -86,6 +102,9 @@ class HybridOptimizer:
             # Occasionally reset to best
             if iteration % 20 == 19:
                 current = best.copy()
+        
+        if verbose:
+            print(f"      Completed: ML attempts={ml_attempts}, Heuristic attempts={heuristic_attempts}, Total improvements={improvements_found}")
         
         return best
     

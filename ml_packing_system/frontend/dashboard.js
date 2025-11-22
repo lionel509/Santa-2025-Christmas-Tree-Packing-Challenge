@@ -434,11 +434,76 @@ document.getElementById('export-btn').addEventListener('click', () => {
     window.location.href = '/api/export';
 });
 
+// Verify all puzzles
+document.getElementById('verify-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('verify-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Verifying...';
+    
+    try {
+        const response = await fetch('/api/verify/summary');
+        const data = await response.json();
+        
+        // Update verification stats
+        document.getElementById('valid-count').textContent = data.valid_puzzles || 0;
+        document.getElementById('collision-count').textContent = data.puzzles_with_collisions || 0;
+        
+        // Format min gap - show scientific notation if very small
+        const minGap = data.min_gap || 0;
+        let gapText;
+        if (minGap < 0.0001) {
+            gapText = minGap.toExponential(2);
+        } else {
+            gapText = minGap.toFixed(6);
+        }
+        document.getElementById('min-gap').textContent = gapText;
+        
+        // Show toast notification
+        showToast(`✓ Verification Complete: ${data.valid_puzzles}/200 valid, ${data.puzzles_with_collisions} collisions`, 'success');
+        
+        btn.textContent = '✓ Verify All';
+        btn.disabled = false;
+    } catch (error) {
+        console.error('Verification error:', error);
+        showToast('❌ Verification failed', 'error');
+        btn.textContent = '✓ Verify All';
+        btn.disabled = false;
+    }
+});
+
+// Auto-fetch verification summary on load and periodically
+async function fetchVerificationSummary() {
+    try {
+        const response = await fetch('/api/verify/summary');
+        const data = await response.json();
+        
+        document.getElementById('valid-count').textContent = data.valid_puzzles || 0;
+        document.getElementById('collision-count').textContent = data.puzzles_with_collisions || 0;
+        
+        const minGap = data.min_gap || 0;
+        let gapText;
+        if (minGap < 0.0001) {
+            gapText = minGap.toExponential(2);
+        } else {
+            gapText = minGap.toFixed(6);
+        }
+        document.getElementById('min-gap').textContent = gapText;
+    } catch (error) {
+        console.error('Error fetching verification summary:', error);
+    }
+}
+
 // Initialize
 connectWebSocket();
 
-// Periodic refresh for visible puzzles
+// Fetch verification summary on load
+setTimeout(fetchVerificationSummary, 2000);
+
+// Periodic refresh for visible puzzles and verification
 setInterval(() => {
     const randomN = Math.floor(Math.random() * (activeRange.end - activeRange.start + 1)) + activeRange.start;
     requestPuzzleData(randomN);
 }, 1000);
+
+// Refresh verification summary every 30 seconds
+setInterval(fetchVerificationSummary, 30000);

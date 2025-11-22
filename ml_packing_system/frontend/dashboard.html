@@ -361,6 +361,18 @@
                 <div class="stat-label">Iterations</div>
                 <div class="stat-value" id="total-iterations">0</div>
             </div>
+            <div class="stat" style="border-left: 1px solid #444; padding-left: 30px;">
+                <div class="stat-label">✓ Valid</div>
+                <div class="stat-value" style="color: #51cf66;" id="valid-count">-</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">⚠ Collisions</div>
+                <div class="stat-value" style="color: #ff6b6b;" id="collision-count">-</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Min Gap</div>
+                <div class="stat-value" style="color: #ffd93d;" id="min-gap">-</div>
+            </div>
         </div>
     </div>
 
@@ -390,6 +402,7 @@
         </div>
 
         <button id="refresh-all">🔄 Refresh All</button>
+        <button id="verify-btn" style="background: linear-gradient(135deg, #ffd93d 0%, #ff8c00 100%);">✓ Verify All</button>
         <button id="export-btn" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">📥 Export</button>
     </div>
 

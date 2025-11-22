@@ -109,10 +109,19 @@ class Application:
         
         def optimization_loop():
             """Main optimization loop - runs continuously 24/7."""
-            print("Starting CONTINUOUS optimization loop (24/7)...")
-            print("Will optimize all 200 puzzles in a loop")
-            print("Early stopping: 50 consecutive trials without improvement per puzzle")
-            print("Using maximum CPU resources available")
+            print("\n" + "="*80)
+            print("🚀 STARTING CONTINUOUS OPTIMIZATION LOOP (24/7)")
+            print("="*80)
+            print("📋 Configuration:")
+            print(f"   • Total Puzzles: 200 (1 to 200 trees each)")
+            print(f"   • Optimization Order: REVERSE (200 → 1) - Hardest first!")
+            print(f"   • Iterations per puzzle: 100")
+            print(f"   • Early stopping: 50 consecutive trials without improvement")
+            print(f"   • ML Agent: {'ENABLED' if self.use_ml else 'DISABLED'}")
+            print(f"   • Device: {self.device}")
+            print(f"   • Collision tolerance: 0.0 (ABSOLUTE ZERO GAP - STRICT)")
+            print(f"   • Auto-save: Every 3 cycles")
+            print("="*80)
             print()
             
             cycle = 0
@@ -124,29 +133,57 @@ class Application:
                 cycle += 1
                 cycle_start_time = time.time()
                 cycle_improvements = 0
+                puzzles_optimized = 0
                 
-                print(f"\n{'='*60}")
-                print(f"Optimization Cycle {cycle} - {time.strftime('%Y-%m-%d %H:%M:%S')}")
-                print(f"{'='*60}")
+                print(f"\n{'='*80}")
+                print(f"🔄 CYCLE {cycle} START - {time.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"{'='*80}")
+                print(f"📊 Current Status:")
+                summary = self.manager.get_summary()
+                print(f"   • Total Score: {summary['total_score']:.2f}")
+                print(f"   • Average Score: {summary['avg_score']:.6f}")
+                print(f"   • Total Iterations: {summary['total_iterations']:,}")
+                print()
+                print(f"🔄 Optimization Order: REVERSE (200 → 1)")
+                print(f"   Starting with harder puzzles (more trees) first!")
+                print()
                 
-                # Iterate through all 200 puzzles continuously
-                for n in range(1, 201):
+                # Iterate through all 200 puzzles continuously - REVERSE ORDER (200 to 1)
+                for n in range(200, 0, -1):  # Start at 200, go down to 1
                     if not self.running:
+                        print("\n⛔ Optimization stopped by user")
                         break
                     
                     puzzle = self.manager.get_puzzle(n)
                     if puzzle is None:
+                        print(f"⚠️  Puzzle {n:3d}: NOT FOUND - skipping")
                         continue
                     
                     # Skip if we've tried too many times without improvement
                     if no_improvement_count[n] >= max_trials_without_improvement:
                         continue
                     
+                    # Verbose progress every puzzle
                     old_score = puzzle.score
+                    puzzle_start_time = time.time()
+                    
+                    print(f"🌲 Puzzle {n:3d} ({n} trees) - Starting optimization...")
+                    print(f"   • Current score: {old_score:.6f}")
+                    print(f"   • Side length: {puzzle.side_length:.4f}")
+                    print(f"   • No-improvement count: {no_improvement_count[n]}/{max_trials_without_improvement}")
+                    print(f"   • Total trees in puzzle: {len(puzzle.trees)}")
+                    print(f"   • Running 100 optimization iterations...")
+                    print(f"   • Progress will be reported every 20 iterations")
+                    print(f"   • ML Agent: {'ACTIVE' if self.use_ml else 'DISABLED'}")
+                    print(f"   • Please wait... (this may take 10-30 seconds)")
+                    print()
                     
                     # Optimize with callback
+                    iteration_improvements = [0]  # Track improvements during iterations
+                    
                     def callback(iteration, state):
                         if state.score < old_score:
+                            iteration_improvements[0] += 1
                             # Broadcast improvement via WebSocket
                             try:
                                 asyncio.run(
@@ -160,12 +197,17 @@ class Application:
                     # Run optimization with more aggressive iterations
                     optimized = self.optimizer.optimize_puzzle(
                         puzzle,
-                        max_iterations=100,  # Increased for better optimization
-                        callback=callback
+                        max_iterations=100,
+                        callback=callback,
+                        verbose=True  # Enable verbose logging
                     )
+                    
+                    puzzle_time = time.time() - puzzle_start_time
+                    print(f"\n   ⏱️  Optimization completed in {puzzle_time:.2f}s")
                     
                     # Update manager
                     self.manager.add_puzzle(optimized)
+                    puzzles_optimized += 1
                     
                     # Check for improvement
                     improvement = old_score - optimized.score
@@ -173,13 +215,17 @@ class Application:
                     if improvement > 1e-6:  # Any improvement (even tiny)
                         no_improvement_count[n] = 0  # Reset counter
                         cycle_improvements += 1
-                        print(f"  ✓ Puzzle {n:3d}: {old_score:.6f} → {optimized.score:.6f} (↓{improvement:.6f}) [Trials reset]")
+                        print(f"   ✅ IMPROVED: {old_score:.6f} → {optimized.score:.6f} (↓{improvement:.6f})")
+                        print(f"   • New side length: {optimized.side_length:.4f}")
+                        print(f"   • Iteration improvements: {iteration_improvements[0]}")
+                        print(f"   • Trial counter: RESET to 0")
                     else:
                         no_improvement_count[n] += 1
                         if no_improvement_count[n] >= max_trials_without_improvement:
-                            print(f"  ⏸ Puzzle {n:3d}: Paused after {max_trials_without_improvement} trials without improvement (score: {optimized.score:.6f})")
-                        elif no_improvement_count[n] % 10 == 0:
-                            print(f"  → Puzzle {n:3d}: No improvement ({no_improvement_count[n]}/{max_trials_without_improvement} trials)")
+                            print(f"   ⏸️  PAUSED: No improvement after {max_trials_without_improvement} trials")
+                            print(f"   • Final score: {optimized.score:.6f}")
+                        else:
+                            print(f"   ➡️  No improvement this trial ({no_improvement_count[n]}/{max_trials_without_improvement})")
                     
                     # Broadcast state update
                     try:
@@ -193,6 +239,8 @@ class Application:
                         )
                     except:
                         pass
+                    
+                    print()  # Blank line between puzzles
                 
                 # Cycle summary
                 cycle_time = time.time() - cycle_start_time
@@ -200,20 +248,33 @@ class Application:
                 active_puzzles = sum(1 for count in no_improvement_count.values() if count < max_trials_without_improvement)
                 paused_puzzles = 200 - active_puzzles
                 
-                print(f"\n{'='*60}")
-                print(f"Cycle {cycle} Summary:")
-                print(f"  Total Score: {summary['total_score']:.2f}")
-                print(f"  Avg Score: {summary['avg_score']:.6f}")
-                print(f"  Improvements This Cycle: {cycle_improvements}")
-                print(f"  Active Puzzles: {active_puzzles}/200")
-                print(f"  Paused Puzzles: {paused_puzzles}/200")
-                print(f"  Cycle Time: {cycle_time:.1f}s")
-                print(f"  Total Iterations: {summary['total_iterations']:,}")
-                print(f"{'='*60}")
+                print(f"\n{'='*80}")
+                print(f"📈 CYCLE {cycle} COMPLETE - {time.strftime('%H:%M:%S')}")
+                print(f"{'='*80}")
+                print(f"⏱️  Cycle Statistics:")
+                print(f"   • Cycle Duration: {cycle_time:.1f} seconds ({cycle_time/60:.2f} minutes)")
+                print(f"   • Puzzles Optimized: {puzzles_optimized}/200")
+                print(f"   • Improvements Found: {cycle_improvements}")
+                print(f"   • Average time per puzzle: {cycle_time/puzzles_optimized:.2f}s" if puzzles_optimized > 0 else "   • Average time per puzzle: N/A")
+                print()
+                print(f"🎯 Overall Progress:")
+                print(f"   • Total Score: {summary['total_score']:.2f}")
+                print(f"   • Average Score: {summary['avg_score']:.6f}")
+                print(f"   • Total Iterations: {summary['total_iterations']:,}")
+                print()
+                print(f"📊 Puzzle Status:")
+                print(f"   • Active (still optimizing): {active_puzzles}/200")
+                print(f"   • Paused (50+ trials w/o improvement): {paused_puzzles}/200")
+                print(f"   • Completion: {(paused_puzzles/200)*100:.1f}%")
+                print(f"{'='*80}")
                 
                 # If all puzzles are paused, reset counters to try again
                 if active_puzzles == 0:
-                    print("\n🔄 All puzzles paused - resetting counters for new optimization round!")
+                    print("\n" + "🔄"*30)
+                    print("🔄 ALL PUZZLES PAUSED - STARTING NEW OPTIMIZATION ROUND!")
+                    print("🔄 Resetting all trial counters to 0")
+                    print("🔄 This allows another fresh attempt at optimization")
+                    print("🔄"*30)
                     no_improvement_count = {n: 0 for n in range(1, 201)}
                 
                 # Broadcast progress
@@ -224,8 +285,16 @@ class Application:
                 
                 # Auto-save every cycle (more frequent for 24/7 operation)
                 if cycle % 3 == 0:
-                    print(f"\n💾 Auto-saving state...")
+                    print(f"\n💾 AUTO-SAVE TRIGGERED (Cycle {cycle})")
+                    print(f"   • Saving all puzzle states to disk...")
+                    save_start = time.time()
                     self.storage.save(self.manager)
+                    save_time = time.time() - save_start
+                    print(f"   • Save completed in {save_time:.2f}s")
+                    print(f"   • Next auto-save in 3 cycles")
+                
+                print(f"\n⏭️  Moving to next cycle in 2 seconds...")
+                time.sleep(2)  # Brief pause between cycles
         
         # Start thread
         self.optimization_thread = threading.Thread(
