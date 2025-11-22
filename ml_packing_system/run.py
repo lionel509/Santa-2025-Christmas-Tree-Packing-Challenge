@@ -36,6 +36,13 @@ def main():
         choices=['cpu', 'cuda', 'mps'],
         help='Device for ML computation (default: cpu)'
     )
+    parser.add_argument(
+        'mode',
+        nargs='?',
+        choices=['standard', 'backinpacking', 'backpacking'],
+        default='backinpacking',
+        help='Operation mode (standard or backinpacking)'
+    )
     
     args = parser.parse_args()
     
@@ -57,6 +64,7 @@ def main():
     app = get_app(initialize=False)
     app.use_ml = not args.no_ml
     app.device = args.device
+    app.backpacking_mode = args.mode in ['backinpacking', 'backpacking']
     
     # Run initialization and optimization in background thread
     def background_init():

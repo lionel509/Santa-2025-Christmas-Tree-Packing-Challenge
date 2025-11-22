@@ -31,6 +31,7 @@ class Application:
         self.use_ml = use_ml
         self.device = device
         self.auto_save_interval = auto_save_interval
+        self.backpacking_mode = False
         
         # Components
         self.manager: Optional[PuzzleManager] = None
@@ -114,7 +115,7 @@ class Application:
             print("="*80)
             print("📋 Configuration:")
             print(f"   • Total Puzzles: 200 (1 to 200 trees each)")
-            print(f"   • Optimization Order: REVERSE (200 → 1) - Hardest first!")
+            print(f"   • Optimization Order: {'Dynamic (1→200 then 200→1)' if self.backpacking_mode else 'REVERSE (200 → 1)'}")
             print(f"   • Iterations per puzzle: 100")
             print(f"   • Early stopping: 50 consecutive trials without improvement")
             print(f"   • ML Agent: {'ENABLED' if self.use_ml else 'DISABLED'}")
@@ -144,12 +145,22 @@ class Application:
                 print(f"   • Average Score: {summary['avg_score']:.6f}")
                 print(f"   • Total Iterations: {summary['total_iterations']:,}")
                 print()
-                print(f"🔄 Optimization Order: REVERSE (200 → 1)")
-                print(f"   Starting with harder puzzles (more trees) first!")
+                # Determine optimization order
+                if self.backpacking_mode and cycle == 1:
+                    order_desc = "FORWARD (1 → 200)"
+                    puzzle_range = range(1, 201)
+                    order_note = "Starting with smaller puzzles (fewer trees) first!"
+                else:
+                    order_desc = "REVERSE (200 → 1)"
+                    puzzle_range = range(200, 0, -1)
+                    order_note = "Starting with harder puzzles (more trees) first!"
+
+                print(f"🔄 Optimization Order: {order_desc}")
+                print(f"   {order_note}")
                 print()
                 
-                # Iterate through all 200 puzzles continuously - REVERSE ORDER (200 to 1)
-                for n in range(200, 0, -1):  # Start at 200, go down to 1
+                # Iterate through all 200 puzzles continuously
+                for n in puzzle_range:
                     if not self.running:
                         print("\n⛔ Optimization stopped by user")
                         break
