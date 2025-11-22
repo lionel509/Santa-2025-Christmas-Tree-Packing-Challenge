@@ -8,6 +8,7 @@ from typing import Optional, Callable
 from ..state import PuzzleState, PuzzleManager
 from ..ml import PPOAgent, PackingEnv
 from .heuristics import local_search, simulated_annealing, squeeze_bounds, jitter_positions
+from .backpacking import run_backpacking, BackPackingResult
 from .initializer import initialize_puzzle
 
 
@@ -131,8 +132,8 @@ class HybridOptimizer:
     
     def _optimize_with_heuristics(self, state: PuzzleState) -> PuzzleState:
         """Optimize using heuristics."""
-        # Choose random heuristic
-        method = random.choice(['local_search', 'simulated_annealing', 'squeeze', 'jitter'])
+        # Choose random heuristic (include backpacking trigger at low probability)
+        method = random.choice(['local_search', 'simulated_annealing', 'squeeze', 'jitter', 'backpacking'])
         
         if method == 'local_search':
             return local_search(state, iterations=20, step_size=0.03)
@@ -142,6 +143,9 @@ class HybridOptimizer:
             return squeeze_bounds(state, factor=0.99)
         elif method == 'jitter':
             return jitter_positions(state, magnitude=0.01)
+        elif method == 'backpacking':
+            # Run full backward iteration across currently known puzzles if manager context exists
+            return state  # Placeholder: BackPacking operates at manager level, not single state
         else:
             return state
     
@@ -199,6 +203,17 @@ class HybridOptimizer:
             print(f"  Total score: {summary['total_score']:.2f}")
             print(f"  Average score: {summary['avg_score']:.6f}")
             print(f"  Total iterations: {summary['total_iterations']}")
+            # Apply BackPacking after each cycle to propagate best large-n layouts
+            bp_source = {}
+            for n in range(1, 201):
+                puzzle = manager.get_puzzle(n)
+                if puzzle is not None:
+                    bp_source[n] = puzzle
+            bp_result: BackPackingResult = run_backpacking(bp_source)
+            for n, puzzle in bp_result.puzzles.items():
+                manager.add_puzzle(puzzle)
+            if bp_result.improvements:
+                print(f"  BackPacking applied: {len(bp_result.improvements)} propagated improvements; new total score={bp_result.total_score:.6f}")
 
 
 class AdaptiveOptimizer(HybridOptimizer):
