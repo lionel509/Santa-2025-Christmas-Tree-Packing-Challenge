@@ -9,11 +9,11 @@ TREE_Y = np.array([0.8, 0.5, 0.5, 0.25, 0.25, 0, 0, -0.2,
 NV = 15
 
 @njit(cache=True)
-def get_poly(cx, cy, deg):
+def get_poly(cx, cy, deg, scale=1.0):
     rad = deg * np.pi / 180.0
     c, s = np.cos(rad), np.sin(rad)
-    px = TREE_X * c - TREE_Y * s + cx
-    py = TREE_X * s + TREE_Y * c + cy
+    px = (TREE_X * scale) * c - (TREE_Y * scale) * s + cx
+    py = (TREE_X * scale) * s + (TREE_Y * scale) * c + cy
     return px, py
 
 @njit(cache=True)
@@ -62,7 +62,7 @@ def calc_side(xs, ys, angs, n):
     if n == 0: return 0.0
     gx0, gy0, gx1, gy1 = 1e9, 1e9, -1e9, -1e9
     for i in range(n):
-        px, py = get_poly(xs[i], ys[i], angs[i])
+        px, py = get_poly(xs[i], ys[i], angs[i], 1.0)
         x0, y0, x1, y1 = get_bbox(px, py)
         gx0, gy0 = min(gx0, x0), min(gy0, y0)
         gx1, gy1 = max(gx1, x1), max(gy1, y1)
@@ -82,7 +82,7 @@ def calc_side_cached(cached_bboxes, n):
 def get_global_bbox(xs, ys, angs, n):
     gx0, gy0, gx1, gy1 = 1e9, 1e9, -1e9, -1e9
     for i in range(n):
-        px, py = get_poly(xs[i], ys[i], angs[i])
+        px, py = get_poly(xs[i], ys[i], angs[i], 1.0)
         x0, y0, x1, y1 = get_bbox(px, py)
         gx0, gy0 = min(gx0, x0), min(gy0, y0)
         gx1, gy1 = max(gx1, x1), max(gy1, y1)
@@ -104,7 +104,7 @@ def find_corner_trees(xs, ys, angs, n):
     corner_indices = np.zeros(n, dtype=np.int32)
     count = 0
     for i in range(n):
-        px, py = get_poly(xs[i], ys[i], angs[i])
+        px, py = get_poly(xs[i], ys[i], angs[i], 1.0)
         x0, y0, x1, y1 = get_bbox(px, py)
         if abs(x0 - gx0) < eps or abs(x1 - gx1) < eps or \
            abs(y0 - gy0) < eps or abs(y1 - gy1) < eps:
@@ -147,7 +147,7 @@ def check_overlap_pair_cached(i, j, pxi, pyi, bbi, pxj, pyj, bbj, cached_px, cac
     return False
 
 @njit(cache=True)
-def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed, compression):
+def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed, compression, collision_scale=1.0):
     np.random.seed(seed)
 
     bxs, bys, bangs = xs.copy(), ys.copy(), angs.copy()
@@ -159,7 +159,7 @@ def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed,
     cached_bboxes = np.zeros((n, 4), dtype=np.float64)
 
     for i in range(n):
-        px, py = get_poly(cxs[i], cys[i], cangs[i])
+        px, py = get_poly(cxs[i], cys[i], cangs[i], collision_scale)
         cached_px[i] = px
         cached_py[i] = py
         cached_bboxes[i] = get_bbox(px, py)
@@ -224,7 +224,7 @@ def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed,
                 cangs[i] = cangs[i] % 360
 
             # Update cache for i
-            npx, npy = get_poly(cxs[i], cys[i], cangs[i])
+            npx, npy = get_poly(cxs[i], cys[i], cangs[i], collision_scale)
             nbb = get_bbox(npx, npy)
             
             # Check overlap using cache
@@ -253,9 +253,9 @@ def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed,
             cxs[j], cys[j] = oxi, oyi
             
             # Update cache for i and j
-            npxi, npyi = get_poly(cxs[i], cys[i], cangs[i])
+            npxi, npyi = get_poly(cxs[i], cys[i], cangs[i], collision_scale)
             nbbi = get_bbox(npxi, npyi)
-            npxj, npyj = get_poly(cxs[j], cys[j], cangs[j])
+            npxj, npyj = get_poly(cxs[j], cys[j], cangs[j], collision_scale)
             nbbj = get_bbox(npxj, npyj)
 
             if check_overlap_pair_cached(i, j, npxi, npyi, nbbi, npxj, npyj, nbbj, cached_px, cached_py, cached_bboxes, n):
@@ -288,7 +288,7 @@ def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed,
                 cxs[i] -= cxs[i] * compression * sc
                 cys[i] -= cys[i] * compression * sc
 
-            npx, npy = get_poly(cxs[i], cys[i], cangs[i])
+            npx, npy = get_poly(cxs[i], cys[i], cangs[i], collision_scale)
             nbb = get_bbox(npx, npy)
 
             if check_overlap_single_cached(i, npx, npy, nbb, cached_px, cached_py, cached_bboxes, n):
@@ -324,7 +324,7 @@ def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed,
                     cangs[idx] += (np.random.random() - 0.5) * rot_scale * sc * 0.5
                     cangs[idx] = cangs[idx] % 360
 
-                npx, npy = get_poly(cxs[idx], cys[idx], cangs[idx])
+                npx, npy = get_poly(cxs[idx], cys[idx], cangs[idx], collision_scale)
                 nbb = get_bbox(npx, npy)
 
                 if check_overlap_single_cached(idx, npx, npy, nbb, cached_px, cached_py, cached_bboxes, n):
@@ -360,9 +360,9 @@ def sa_numba(xs, ys, angs, n, iterations, T0, Tmin, move_scale, rot_scale, seed,
             cxs[j] += dx
             cys[j] += dy
 
-            npxi, npyi = get_poly(cxs[i], cys[i], cangs[i])
+            npxi, npyi = get_poly(cxs[i], cys[i], cangs[i], collision_scale)
             nbbi = get_bbox(npxi, npyi)
-            npxj, npyj = get_poly(cxs[j], cys[j], cangs[j])
+            npxj, npyj = get_poly(cxs[j], cys[j], cangs[j], collision_scale)
             nbbj = get_bbox(npxj, npyj)
 
             if check_overlap_pair_cached(i, j, npxi, npyi, nbbi, npxj, npyj, nbbj, cached_px, cached_py, cached_bboxes, n):
