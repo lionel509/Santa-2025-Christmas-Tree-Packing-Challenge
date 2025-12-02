@@ -1,0 +1,20 @@
+# Ignore all files in the out/ folder (every improvement)
+out/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# C++ compiled files
+*.o
+*.out
+santa_optimizer
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
