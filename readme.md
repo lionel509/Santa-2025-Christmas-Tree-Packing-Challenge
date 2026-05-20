@@ -1,43 +1,87 @@
-Based on the high-scoring notebooks you provided (specifically Santa Claude, Tree Packer v18/v21, and the Ensemble strategies), here is a "super-powered" C++ solution.
+# Santa 2025 — Christmas Tree Packing Challenge
 
-This code combines the best features found in your uploaded files:
+> **Kaggle Competition — Santa 2025**
 
-Simulated Annealing (SA) with multiple move types (translation, rotation, and swap moves from v21).
+A combinatorial optimisation challenge to pack as many Christmas trees (irregular polygons) as possible into a fixed bounding box without overlap. This repository contains the full solution pipeline including Python exploration notebooks and a high-performance C++ optimiser.
 
-Local Search strategies like squeeze (shrinking the box), compaction (pushing trees together), and localSearch (fine-tuning).
+---
 
-Parallelization using OpenMP to explore multiple optimization paths simultaneously.
+## Competition Overview
 
-Continuous Improvement: An infinite loop that reloads the best solution, tries to improve it, and saves backups to a solutions/ folder.
+| Detail | Value |
+|---|---|
+| **Host** | Kaggle / Google LLC |
+| **Series** | Santa 2025 |
+| **Task** | Combinatorial optimisation (2D packing) |
+| **Metric** | Number of trees packed (maximise) |
+| **License** | CC BY 4.0 |
 
-Robust Geometry: Uses the precise polygon definitions and intersection tests (Point-in-Polygon and Segment Intersection) found in the top solutions.
+**Competition page:** [Kaggle Santa 2025](https://www.kaggle.com/competitions/santa-2025)
 
-## Instructions
+---
 
-1. Save the code below as `santa_optimizer.cpp`.
+## Project Structure
 
-2. Ensure you have a `submission.csv` file (the current best solution) in the same directory.
+```
+.
+├── Backups/              # Saved solution backups during optimisation runs
+├── Data/                 # Competition data (train/test CSVs)
+├── Kraggle/              # Kaggle notebook exports and experiments
+├── santa_optimizer.cpp   # Main C++ optimiser (Simulated Annealing + Local Search)
+├── submission.csv        # Best submission file
+├── test.csv              # Test dataset
+└── readme.md             # This file
+```
 
-3. Compile with optimization enabled:
+---
 
-   **Option A: With GCC (for OpenMP parallelization)**
+## Approach
 
-   ```bash
-   # Install GCC if needed
-   brew install gcc
-   
-   # Compile with OpenMP support (check your GCC version with: ls /opt/homebrew/bin/g++-*)
-   g++-15 -O3 -march=native -std=c++17 -fopenmp -o santa_optimizer santa_optimizer.cpp
-   ```
+### Python Exploration
+Initial exploration and baseline strategies were developed in Jupyter notebooks (see `Kraggle/` folder), covering:
+- Tree polygon parsing and visualisation
+- Greedy placement baselines
+- Ensemble strategies across multiple solver runs
 
-   **Option B: With Clang (single-threaded, no OpenMP)**
+### C++ Optimiser (`santa_optimizer.cpp`)
+The main solver is a high-performance C++ program combining multiple optimisation techniques:
 
-   ```bash
-   g++ -O3 -march=native -std=c++17 -o santa_optimizer santa_optimizer.cpp
-   ```
+- **Simulated Annealing** — with translation, rotation, and swap move types for broad search
+- **Local Search** — squeeze (shrink bounding box), compaction (push trees closer), and fine-tuning passes
+- **OpenMP Parallelisation** — explores multiple solution paths simultaneously across CPU cores
+- **Continuous Improvement Loop** — reloads the best known solution, attempts improvements, and saves timestamped backups
 
-4. Run it:
+---
 
-   ```bash
-   ./santa_optimizer
-   ```
+## Building & Running the C++ Optimiser
+
+Requires a C++17 compiler. OpenMP is recommended for parallelisation.
+
+**Option A: GCC (with OpenMP)**
+```bash
+# Install GCC if needed (macOS)
+brew install gcc
+
+# Compile (replace g++-15 with your GCC version)
+g++-15 -O3 -march=native -std=c++17 -fopenmp -o santa_optimizer santa_optimizer.cpp
+
+# Run
+./santa_optimizer
+```
+
+**Option B: Clang (single-threaded)**
+```bash
+g++ -O3 -march=native -std=c++17 -o santa_optimizer santa_optimizer.cpp
+./santa_optimizer
+```
+
+> **Note:** Place `submission.csv` (current best solution) in the same directory before running. The optimiser will read it as a warm start and save improved solutions to `Backups/`.
+
+---
+
+## Tech Stack
+
+![C++](https://img.shields.io/badge/C++-00599C?style=flat&logo=c%2B%2B&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
+![Jupyter](https://img.shields.io/badge/Jupyter-F37626?style=flat&logo=jupyter&logoColor=white)
+![OpenMP](https://img.shields.io/badge/OpenMP-Parallel-green?style=flat)
